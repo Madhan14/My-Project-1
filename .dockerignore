@@ -1,0 +1,16 @@
+# Git
+.git
+.gitignore
+
+# Node deps
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Compose/configs not needed in final image
+docker-compose.yml
+Jenkinsfile
+*.md
+
+# Logs
+*.log
