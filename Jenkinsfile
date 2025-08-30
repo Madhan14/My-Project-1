@@ -1,4 +1,4 @@
-pipeline {
+\pipeline {
   agent any
 
   environment {
@@ -69,10 +69,10 @@ pipeline {
             sh """
               ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_HOST} '
                 set -e
-                docker pull ${deployImage} || true
-                docker rm -f devops-web || true
-                docker run -d --name devops-web --restart unless-stopped -p 80:80 ${deployImage}
-                docker ps --filter name=devops-web
+                sudo docker pull ${deployImage} || true
+                sudo docker rm -f devops-web || true
+                sudo docker run -d --name devops-web --restart unless-stopped -p 80:80 ${deployImage}
+                sudo docker ps --filter name=devops-web
               '
             """
           }
