@@ -1,31 +1,56 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()   // <-- This makes Jenkins listen for GitHub pushes
+    }
+
     environment {
-        DOCKERHUB_USER = 'your-dockerhub-username'   // 🔹 replace with your DockerHub username
-        EC2_USER  = 'ubuntu'                         // for Ubuntu EC2
-        EC2_HOST  = '43.205.230.61'             // replace with your EC2 public IP/DNS
+        DEV_IMAGE = "madhan14/dev:latest"
+        PROD_IMAGE = "madhan14/prod:latest"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: "${env.BRANCH_NAME}", url: 'https://github.com/Madhan14/My-Project-1.git'
+               git branch: 'dev', url: 'https://github.com/Madhan14/My-Project-1.git', credentialsId: 'Github-Token'
+
             }
         }
 
-        stage('Build & Push Docker Image') {
+        stage('Docker Login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                                                  usernameVariable: 'DOCKER_USER',
+                                                  passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    '''
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
-                                                    usernameVariable: 'DH_USER',
-                                                    passwordVariable: 'DH_PASS')]) {
-                        sh '''
-                          echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
-                          IMAGE_NAME=$DH_USER/devops-app
-                          docker build -t $IMAGE_NAME:$BUILD_NUMBER .
-                          docker push $IMAGE_NAME:$BUILD_NUMBER
-                        '''
+                    sh "docker build -t myapp:${env.BUILD_NUMBER} ."
+                }
+            }
+        }
+
+        stage('Push to DockerHub') {
+            steps {
+                script {
+                    if (env.BRANCH_NAME == "main") {
+                        sh """
+                            docker tag myapp:${env.BUILD_NUMBER} ${DEV_IMAGE}
+                            docker push ${DEV_IMAGE}
+                        """
+                    } else if (env.BRANCH_NAME == "dev") {
+                        sh """
+                            docker tag myapp:${env.BUILD_NUMBER} ${PROD_IMAGE}
+                            docker push ${PROD_IMAGE}
+                        """
                     }
                 }
             }
@@ -33,15 +58,27 @@ pipeline {
 
         stage('Deploy to EC2') {
             steps {
-                script {
-                    sshagent (credentials: ['linux-SSH-key']) {
-                        sh '''
-                          ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} \
-                          "docker pull $DOCKERHUB_USER/devops-app:$BUILD_NUMBER && \
-                           docker stop app || true && \
-                           docker rm app || true && \
-                           docker run -d --name app -p 80:80 $DOCKERHUB_USER/devops-app:$BUILD_NUMBER"
-                        '''
+                sshagent(['linux-SSH-key']) {
+                    script {
+                        if (env.BRANCH_NAME == "main") {
+                            sh '''
+                                ssh -o StrictHostKeyChecking=no ubuntu@<EC2-PUBLIC-IP> "
+                                    docker pull ${DEV_IMAGE} &&
+                                    docker stop myapp || true &&
+                                    docker rm myapp || true &&
+                                    docker run -d -p 80:80 --name myapp ${DEV_IMAGE}
+                                "
+                            '''
+                        } else if (env.BRANCH_NAME == "dev") {
+                            sh '''
+                                ssh -o StrictHostKeyChecking=no ubuntu@<43.205.230.61> "
+                                    docker pull ${PROD_IMAGE} &&
+                                    docker stop myapp || true &&
+                                    docker rm myapp || true &&
+                                    docker run -d -p 80:80 --name myapp ${PROD_IMAGE}
+                                "
+                            '''
+                        }
                     }
                 }
             }
