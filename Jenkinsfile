@@ -2,15 +2,15 @@ pipeline {
   agent any
 
   environment {
-    DOCKERHUB_USER = 'madhan14'   // Docker Hub username
-    DEV_REPO  = 'dev'             // public repo
-    PROD_REPO = 'prod'            // private repo
+    DOCKERHUB_USER = 'madhan14'
+    DEV_REPO  = 'dev'    // public repo
+    PROD_REPO = 'prod'   // private repo
     EC2_USER  = 'ubuntu'
-    EC2_HOST  = '65.0.4.72,43.205.127.194'
+    EC2_HOSTS = '65.0.4.72,43.205.127.194'   // multiple hosts separated by commas
   }
 
   triggers {
-    githubPush()   // auto trigger from GitHub webhook
+    githubPush()
   }
 
   options {
@@ -29,27 +29,25 @@ pipeline {
     stage('Build & Push Image') {
       steps {
         script {
-          // Rule: dev branch → push to PROD repo
-          //       main branch → push to DEV repo
+          // If branch == dev -> push to PROD repo
+          // else -> push to DEV repo
           def targetRepo = (env.BRANCH_NAME == 'dev') ? env.PROD_REPO : env.DEV_REPO
 
-          // Image tags
+          // Tag with build number and also latest
           env.IMAGE = "${env.DOCKERHUB_USER}/${targetRepo}:${env.BUILD_NUMBER}"
           def latest = "${env.DOCKERHUB_USER}/${targetRepo}:latest"
 
           sh """
             echo "Building image: ${env.IMAGE}"
-            docker build -t ${env.IMAGE} -t ${latest} .
+            sudo docker build -t ${env.IMAGE} -t ${latest} .
           """
 
-          withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
-                                           usernameVariable: 'DH_USER',
-                                           passwordVariable: 'DH_PASS')]) {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
             sh '''
-              echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+              echo "$DH_PASS" | sudo docker login -u "$DH_USER" --password-stdin
             '''
-            sh "docker push ${env.IMAGE}"
-            sh "docker push ${latest}"
+            sh "sudo docker push ${env.IMAGE}"
+            sh "sudo docker push ${latest}"
           }
         }
       }
@@ -62,15 +60,11 @@ pipeline {
           def targetRepo = (env.BRANCH_NAME == 'dev') ? env.PROD_REPO : env.DEV_REPO
           def deployImage = "${env.DOCKERHUB_USER}/${targetRepo}:latest"
 
-          withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
-                                           usernameVariable: 'DH_USER',
-                                           passwordVariable: 'DH_PASS')]) {
           hosts.each { host ->
             sshagent (credentials: ['ec2-ssh-key']) {
               sh """
-                ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_HOST} '
+                ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${host} '
                   set -e
-                  echo "$DH_PASS" | sudo docker login -u "$DH_USER" --password-stdin
                   sudo docker pull ${deployImage} || true
                   sudo docker rm -f devops-web || true
                   sudo docker run -d --name devops-web --restart unless-stopped -p 80:80 ${deployImage}
@@ -86,7 +80,7 @@ pipeline {
 
   post {
     always {
-      sh 'docker image prune -f || true'
+      sh 'sudo docker image prune -f || true'
     }
   }
 }
