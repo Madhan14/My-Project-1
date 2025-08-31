@@ -6,7 +6,7 @@ pipeline {
         IMAGE_NAME     = "prod"
         IMAGE          = "${DOCKERHUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER}"
         LATEST         = "${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
-        EC2_HOST       = "43.205.127.194"   // Replace with your active EC2 IP
+        EC2_HOST       = "65.0.4.72"   // Replace with your EC2 Public IP
         EC2_USER       = "ubuntu"
     }
 
@@ -21,13 +21,16 @@ pipeline {
         stage('Build & Push Image') {
             steps {
                 script {
-                    echo "Building image: ${IMAGE}"
-                    sh """
-                        sudo docker build -t ${IMAGE} -t ${LATEST} .
-                        sudo docker login -u ${DOCKERHUB_USER} -p ${DOCKER_HUB_PASSWORD}
-                        sudo docker push ${IMAGE}
-                        sudo docker push ${LATEST}
-                    """
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                                                     usernameVariable: 'DOCKER_USER',
+                                                     passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                            sudo docker build -t ${IMAGE} -t ${LATEST} .
+                            echo ${DOCKER_PASS} | sudo docker login -u ${DOCKER_USER} --password-stdin
+                            sudo docker push ${IMAGE}
+                            sudo docker push ${LATEST}
+                        """
+                    }
                 }
             }
         }
@@ -51,7 +54,7 @@ pipeline {
 
     post {
         always {
-            sh "docker image prune -f || true"
+            sh "sudo docker image prune -f || true"
         }
     }
 }
