@@ -6,7 +6,7 @@ pipeline {
     DEV_REPO  = 'dev'             // public repo
     PROD_REPO = 'prod'            // private repo
     EC2_USER  = 'ubuntu'
-    EC2_HOST  = ["65.0.4.72", "43.205.127.194"]
+    EC2_HOST  = '65.0.4.72,43.205.127.194'
   }
 
   triggers {
@@ -58,12 +58,14 @@ pipeline {
     stage('Deploy to EC2') {
       steps {
         script {
+          def hosts = env.EC2_HOSTS.split(',')
           def targetRepo = (env.BRANCH_NAME == 'dev') ? env.PROD_REPO : env.DEV_REPO
           def deployImage = "${env.DOCKERHUB_USER}/${targetRepo}:latest"
 
           withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
                                            usernameVariable: 'DH_USER',
                                            passwordVariable: 'DH_PASS')]) {
+          hosts.each { host ->
             sshagent (credentials: ['ec2-ssh-key']) {
               sh """
                 ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_HOST} '
