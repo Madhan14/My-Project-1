@@ -1,60 +1,90 @@
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        DOCKERHUB_USER = "madhan14"
-        IMAGE_NAME     = "prod"
-        IMAGE          = "${DOCKERHUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER}"
-        LATEST         = "${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
-        EC2_HOST       = "65.0.4.72"   // Replace with your EC2 Public IP
-        EC2_USER       = "ubuntu"
+  environment {
+    DOCKERHUB_USER = 'madhan14'   // Docker Hub username
+    DEV_REPO  = 'dev'             // public repo
+    PROD_REPO = 'prod'            // private repo
+    EC2_USER  = 'ubuntu'
+    EC2_HOST  = '65.0.4.72'   // your EC2 public IP
+  }
+
+  triggers {
+    githubPush()   // auto trigger from GitHub webhook
+  }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        sh 'echo "Branch: ${BRANCH_NAME}"'
+      }
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
-                git branch: "${env.BRANCH_NAME}", url: 'https://github.com/Madhan14/My-Project-1.git'
-                sh "echo Branch: ${env.BRANCH_NAME}"
-            }
-        }
+    stage('Build & Push Image') {
+      steps {
+        script {
+          // Rule: dev branch → push to PROD repo
+          //       main branch → push to DEV repo
+          def targetRepo = (env.BRANCH_NAME == 'dev') ? env.PROD_REPO : env.DEV_REPO
 
-        stage('Build & Push Image') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
-                                                     usernameVariable: 'DOCKER_USER',
-                                                     passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            sudo docker build -t ${IMAGE} -t ${LATEST} .
-                            echo ${DOCKER_PASS} | sudo docker login -u ${DOCKER_USER} --password-stdin
-                            sudo docker push ${IMAGE}
-                            sudo docker push ${LATEST}
-                        """
-                    }
-                }
-            }
-        }
+          // Image tags
+          env.IMAGE = "${env.DOCKERHUB_USER}/${targetRepo}:${env.BUILD_NUMBER}"
+          def latest = "${env.DOCKERHUB_USER}/${targetRepo}:latest"
 
-        stage('Deploy to EC2') {
-            steps {
-                script {
-                    echo "Deploying on ${EC2_HOST}"
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
-                          sudo docker pull ${LATEST} &&
-                          sudo docker stop myapp || true &&
-                          sudo docker rm myapp || true &&
-                          sudo docker run -d -p 80:80 --name myapp ${LATEST}
-                        '
-                    """
-                }
-            }
+          sh """
+            echo "Building image: ${env.IMAGE}"
+            docker build -t ${env.IMAGE} -t ${latest} .
+          """
+
+          withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                                           usernameVariable: 'DH_USER',
+                                           passwordVariable: 'DH_PASS')]) {
+            sh '''
+              echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+            '''
+            sh "docker push ${env.IMAGE}"
+            sh "docker push ${latest}"
+          }
         }
+      }
     }
 
-    post {
-        always {
-            sh "sudo docker image prune -f || true"
+    stage('Deploy to EC2') {
+      steps {
+        script {
+          def targetRepo = (env.BRANCH_NAME == 'dev') ? env.PROD_REPO : env.DEV_REPO
+          def deployImage = "${env.DOCKERHUB_USER}/${targetRepo}:latest"
+
+          withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                                           usernameVariable: 'DH_USER',
+                                           passwordVariable: 'DH_PASS')]) {
+            sshagent (credentials: ['ec2-ssh-key']) {
+              sh """
+                ssh -o StrictHostKeyChecking=no ${env.EC2_USER}@${env.EC2_HOST} '
+                  set -e
+                  echo "$DH_PASS" | sudo docker login -u "$DH_USER" --password-stdin
+                  sudo docker pull ${deployImage} || true
+                  sudo docker rm -f devops-web || true
+                  sudo docker run -d --name devops-web --restart unless-stopped -p 80:80 ${deployImage}
+                  sudo docker ps --filter name=devops-web
+                '
+              """
+            }
+          }
         }
+      }
     }
+  }
+
+  post {
+    always {
+      sh 'docker image prune -f || true'
+    }
+  }
 }
