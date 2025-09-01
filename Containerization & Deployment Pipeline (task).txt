@@ -1,0 +1,154 @@
+
+https://themewagon.com/themes/dattaable/
+
+This is the link for  static website template for code...
+
+
+
+Now new task for me...
+
+1. Convert that into an docker image. 
+
+2. push it to the ECR 
+
+3. run the container in and get the output Public IP.
+
+
+----------------
+
+First i download static website fro google and go to VS CODE and And Code path in Local mechine,
+and then execute all these commands.
+
+git init
+git branch -M main
+
+# Stage and commit your actual website files
+git add .
+git commit -m "Initial commit - static website"
+
+# Link to your GitHub repo
+git remote add origin https://github.com/<your-username>/my-static-website.git
+
+# Push to GitHub
+git push -u origin main
+
+
++++++++++++++++++++++++++++++++++++++++
+
+
+Then Next Process is, i initialized my Github into my EC2..
+
+->  sudo apt update -y
+
+-> sudo apt install git -y
+
+->  git clone https://github.com/<your-username>/<your-repo>.git
+
+->  cd <your-repo>
+
+-----------------------------
+
+Then Next in I downloaded DOCKER in EC2...
+
+-> sudo apt update && sudo apt-get upgrade -y 
+
+-> sudo apt install docker -y      
+
+-> sudo service docker start 
+
+->  sudo docker --version
+
+
+Now the next process is Create Dockerfile to Identigy this code and mentioned the path and Expose the port...
+
+
+->  sudo nano Dockerfile
+
+
+# Use Nginx to serve static files
+FROM nginx:alpine
+
+# Remove default nginx static assets
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy your static site files into nginx html folder
+COPY . /usr/share/nginx/html
+
+# Expose port 80
+EXPOSE 80
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]
+
+
+
+
+
+🔹 Step 2: Build the Docker Image
+----------------------------------------------
+Make sure you’re in the project folder (where the Dockerfile is):
+
+
+First install the ECR and Kubectl  in EC2...
+
+
+->  docker build -t my-static-website .
+
+-> docker run -itd -p 80:80 my-static-website 
+
+
+Now nexr process is 
+----------------------------
+
+🔹 Step 3: Push Image to AWS ECR
+
+Create an ECR repo in AWS console (e.g., my-static-website).
+
+
+
+Authenticate Docker with ECR:
+------------------------------------------
+
+->  sudo aws ecr get-login-password --region <your-region> | docker login --username AWS --password-stdin <account_id>.dkr.ecr.<your-region>.amazonaws.com
+
+
+->  sudo aws ecr create-repository --repository-name my-static-website --region ap-south-1
+
+
+Tag the image for ECR:
+--------------------------------
+
+-> sudo docker tag my-static-website:latest <account_id>.dkr.ecr.<your-region>.amazonaws.com/my-static-website:latest
+
+
+
+Now Push it to the ECR Repo...
+-----------------------------------------
+
+->  sudo docker push <account_id>.dkr.ecr.<your-region>.amazonaws.com/my-static-website:latest
+
+
+
+Now we have to Pull your image from ECR:
+---------------------------------------------------------
+
+->  sudo  docker pull <account_id>.dkr.ecr.<your-region>.amazonaws.com/my-static-website:latest
+
+
+Run the container:
+-------------------------
+
+->  sudo docker run -d -p 8080:80 <account_id>.dkr.ecr.<your-region>.amazonaws.com/my-static-website:latest
+
+
+
+Now we can copy the Public IP and attach with exposed port to hit the browser to check whether it's working or not...
+
+http://13.201.11.131:8088/
+
+
++++++++++++++++++++++++++++++++++++++++++++
+
+
+
+

@@ -1,0 +1,351 @@
+My Task is :
+----------------
+
+Create a simple script file and push it to repo. Create a project in Jenkins connected to your GitHub repository. When a commit is made to your repo, automatically build must get triggered from Jenkins and the output must be shared to me via email.
+
+
+Step 1: Create a Simple Script & Push to GitHub
+
+On your local machine (or EC2):
+
+->  mkdir jenkins-github-demo
+
+->  cd jenkins-github-demo
+
+
+
+2.  Create a simple script file (hello.sh):
+---------------------------------------------------
+
+->  nano hello.sh
+
+#!/bin/bash
+echo "Hello from Jenkins Pipeline! Build was successful."
+echo "Current Date and Time: $(date)"
+echo "Uptime of the system: $(uptime)"
+echo "Disk Usage:"
+df -h
+echo "Memory Usage:"
+free -h
+
+
+3.  Make it executable:
+--------------------------------
+
+->  chmod +x hello.sh
+
+
+
+4.  Initialize git repo & push to GitHub:
+---------------------------------------------------
+
+->  git init
+
+->  git remote add origin https://github.com/<your-username>/<your-repo>.git
+
+->  git add .
+
+->  git commit -m "Initial commit with hello.sh"
+
+->  git push -u origin main
+
+
+
+
++++++++++++++++++++++++++++++++++++++++
+
+
+Step 2: Configure Jenkins in EC2  :
+---------------------------------------------
+
+->  sudo apt update
+
+->  sudo apt install openjdk-17-jdk -y
+
+->  curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | sudo tee \
+   /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+
+->  echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+   https://pkg.jenkins.io/debian binary/ | sudo tee \
+   /etc/apt/sources.list.d/jenkins.list > /dev/null
+
+->  sudo apt update
+
+->  sudo apt install jenkins -y
+
+->  sudo systemctl enable jenkins
+
+->  sudo systemctl start jenkins
+
+  
+Access Jenkins:
+👉 http://<your-ec2-ip>:8080  before that enable the port in EC2 security Group...
+
+
+
+++++++++++++++++++++++
+
+
+1.  Install Plugins:
+-----------------------
+
+Go to Manage Jenkins → Plugins → Available plugins
+
+Install:
+
+GitHub Integration
+
+Git Plugin
+
+Email Extension Plugin
+
+
+
+ 2. Configure GitHub in Jenkins:
+------------------------------------------
+
+Manage Jenkins → System → GitHub Servers
+
+Add your GitHub access token.
+
+Generate token in GitHub: Settings → Developer Settings → Personal Access Tokens → Classic → repo, admin:repo_hook permissions.
+
+
+
+
++++++++++++++++++++++++++++++++
+
+
+Step 3: Create Jenkins Job  :
+------------------------------------
+
+1.  In Jenkins Dashboard → New Item
+
+Enter name:   GitHub-Jenkins-Demo
+
+Select:   Freestyle project
+
+
+2.  In Source Code Management:
+--------------------------------------------
+
+Select Git → Paste your GitHub repo URL.
+
+Add credentials (GitHub username + token).
+
+
+3.  In Build Triggers:
+-------------------------
+
+Select GitHub hook trigger for GITScm polling
+
+
+4.  In Build Steps:
+------------------------
+
+Add Execute Shell
+
+Command:
+
+./hello.sh
+
+
+
+
++++++++++++++++++++++++++++++++
+
+
+Step 4: GitHub Webhook :
+=====================
+
+
+1.  Go to your GitHub repo → Settings → Webhooks → Add webhook
+
+Payload URL: http://<your-jenkins-ip>:8080/github-webhook/
+
+Content type: application/json
+
+Select: Just the push event
+
+Click Add webhook
+
+
+++++++++++++++++++++++++++++++++++
+
+
+
+Step 5: Email Notification Setup
+============================
+
+1 .  In Jenkins: Manage Jenkins → System → Extended E-mail Notification
+
+SMTP Server: smtp.gmail.com
+
+Use port: 587
+
+Check: Use SMTP Authentication
+
+Enter Gmail ID + App Password (not normal password, generate Google App Password
+).
+
+Check: Use TLS
+
+
+
+2.  In your Job → Post-build Actions
+-----------------------------------------------
+
+Add Editable Email Notification
+
+Recipients: your-email@example.com
+
+Subject: Jenkins Build #${BUILD_NUMBER} - ${BUILD_STATUS}
+
+Body:
+
+Build triggered from GitHub Commit.
+Console Output: ${BUILD_LOG}
+
+
+
++++++++++++++++++++++++++++
+
+
+6. Step 6: Test the Setup :
+----------------------------------
+
+Edit your repo file locally:
+
+
+->  echo "New commit test" >> hello.sh
+
+->  git add hello.sh
+
+->  git commit -m "Test commit for Jenkins build trigger"
+
+->  git push -u origin main
+
+
+
+++++++++++++++++++++++++++++++++++
+
+
+Email Setup in Jenkins with Gmail slowly. 
+-------------------------------------------------------
+
+🔑 Step A: Generate Gmail App Password
+-------------------------------------------------------
+
+Since Google doesn’t allow normal passwords for apps (like Jenkins), you need an App Password.
+
+Open Google Account
+ and login.
+
+Go to Security → 2-Step Verification (enable it if not already).
+
+Scroll down → App Passwords.
+
+Select:
+
+App → choose Mail
+
+Device → choose Other (Custom) → type Jenkins
+
+Google will show a 16-character password (like abcd efgh ijkl mnop).
+👉 Copy this, you’ll use it in Jenkins.
+
+
+
+🔧 Step B: Configure Jenkins
+---------------------------------------
+
+
+Go to Jenkins → Manage Jenkins → System.
+
+Scroll to Extended E-mail Notification section.
+
+SMTP Server: smtp.gmail.com
+
+Default user e-mail suffix: @gmail.com (optional).
+
+SMTP Port: 587
+
+Check ✅ Use SMTP Authentication
+
+Username: your-email@gmail.com
+
+Password: Paste the App Password from Step A
+
+Check ✅ Use TLS
+
+
+📧 Step C: Test Connection
+------------------------------------
+
+Still under the same page, scroll to E-mail Notification section.
+
+Add:
+
+SMTP Server: smtp.gmail.com
+
+Default user e-mail suffix: @gmail.com
+
+Check Use SMTP Authentication
+
+Enter Gmail + App Password
+
+Check Use TLS on port 587.
+
+Save changes.
+
+Now go to: Manage Jenkins → Configure System → E-mail Notification
+
+Enter your Gmail in "Test e-mail recipient".
+
+Click Test configuration by sending test e-mail.
+👉 You should get a test email in your inbox 🎉
+
+
+
+📦 Step D: Add in Your Job
+------------------------------------
+
+
+In your Jenkins Job → Post-build Actions:
+
+1.  Select Editable Email Notification.
+
+2.  Add your email in Recipients.
+
+
+Default Subject:
+----------------------
+
+Build ${BUILD_STATUS}: Job ${JOB_NAME} [#${BUILD_NUMBER}]
+
+
+
+Default Content / Body
+--------------------------------
+
+Hello,
+
+Jenkins build was triggered by a GitHub commit.
+Job: ${JOB_NAME}
+Build Number: ${BUILD_NUMBER}
+Status: ${BUILD_STATUS}
+Check logs: ${BUILD_URL}console
+
+Regards,
+Jenkins
+
+
+
+5.  Save the job.
+
+
+
+Now every time a GitHub commit triggers Jenkins, you’ll get the build status in your email.
+
+
+
