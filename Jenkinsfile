@@ -6,7 +6,7 @@ pipeline {
     DEV_REPO  = 'dev'             // public repo
     PROD_REPO = 'prod'            // private repo
     EC2_USER  = 'ubuntu'
-    EC2_HOST  = '65.0.4.72'   // your EC2 public IP
+    EC2_HOST  = '13.201.30.121'   // your EC2 public IP
   }
 
   triggers {
